@@ -8,6 +8,7 @@
 #define MQ135_PIN_AOUT 32 // Pin analógico para el sensor MQ-135 (D32)
 #define DHT_PIN 33 // Pin digital para el sensor DHT11 (D33)
 #define DHT_TYPE DHT11 // Definiendo el tipo de sensor DHT
+#define PM10_PIN 34 // Pin analógico para el potenciómetro B20K (D34)
 
 // Firebase configuration
 FirebaseData firebaseData; // Objeto para interactuar con Firebase
@@ -19,7 +20,7 @@ const char* ssid = "arduino"; // Nombre de la red Wi-Fi
 const char* password = "tendobanshou"; // Contraseña del Wi-Fi
 
 // ID del dispositivo
-String dispositivoID = "-ODW3V8uzFjP7SzuMqqE"; // ID del dispositivo en la base de datos
+String dispositivoID = "-ODvFtcuXM5ZCqk3C9_0"; // ID del dispositivo en la base de datos
 
 // Crear objeto DHT
 DHT dht(DHT_PIN, DHT_TYPE);
@@ -37,10 +38,6 @@ void setup() {
   firebaseConfig.database_url = "https://ecoash-96aed-default-rtdb.firebaseio.com/"; // URL de la base de datos
   firebaseAuth.user.email = "joaovaldiglesias@gmail.com"; // Usuario autenticado
   firebaseAuth.user.password = "123456"; // Contraseña del usuario
-
-  Serial.println("API Key: " + String(firebaseConfig.api_key.c_str()));
-  Serial.println("Correo: " + String(firebaseAuth.user.email.c_str()));
-  Serial.println("Contraseña: " + String(firebaseAuth.user.password.c_str()));
 
   Firebase.begin(&firebaseConfig, &firebaseAuth);
   Firebase.reconnectWiFi(true);
@@ -89,63 +86,43 @@ void actualizarDatosFirebase() {
     return;
   }
 
-  Serial.print("Valor crudo leído del sensor: ");
-  Serial.println(valorCrudo);
-  Serial.print("Concentración de CO2 en ppm: ");
-  Serial.println(ppm);
-  Serial.print("Concentración de CO en ppm: ");
-  Serial.println(co);
-  Serial.print("Temperatura: ");
-  Serial.print(temperatura);
-  Serial.println(" °C");
-  Serial.print("Humedad: ");
-  Serial.print(humedad);
-  Serial.println(" %");
+  // Leer el valor crudo del potenciómetro B20K
+  int pm10Crudo = analogRead(PM10_PIN);
+  // Convertir el valor crudo a PM10 (asumimos que el rango de 0-4095 se convierte directamente a 0-1000 µg/m3)
+  float pm10 = map(pm10Crudo, 0, 4095, 0, 1000);
+
+  // Calcular PM2.5 a partir de PM10 usando la relación aproximada de 0.65
+  float pm2_5 = pm10 * 0.65;
+
+  Serial.print("Valor crudo PM10: ");
+  Serial.println(pm10Crudo);
+  Serial.print("PM10 (µg/m3): ");
+  Serial.println(pm10);
+  Serial.print("PM2.5 (µg/m3): ");
+  Serial.println(pm2_5);
 
   String path = "/dispositivos/" + dispositivoID + "/";
   
-  // Subir valor crudo a Firebase
-  Serial.println("Enviando calidad de aire cruda a Firebase...");
-  if (Firebase.setInt(firebaseData, path + "lectura_cruda", valorCrudo)) {
-    Serial.println("✅ Valor crudo actualizado en Firebase");
-  } else {
-    Serial.print("❌ Error al actualizar valor crudo: ");
-    Serial.println(firebaseData.errorReason());
-  }
+  // Subir PM10 a Firebase
+  subirValorFirebase(path, "PM10", pm10);
+  
+  // Subir PM2.5 a Firebase
+  subirValorFirebase(path, "PM2_5", pm2_5);
 
-  // Subir ppm de CO2 a Firebase
-  Serial.println("Enviando concentración de CO2 (ppm) a Firebase...");
-  if (Firebase.setFloat(firebaseData, path + "CO2", ppm)) {
-    Serial.println("✅ PPM de CO2 actualizado en Firebase");
-  } else {
-    Serial.print("❌ Error al actualizar PPM de CO2: ");
-    Serial.println(firebaseData.errorReason());
-  }
+  // Subir otros valores como CO, CO2, temperatura y humedad
+  subirValorFirebase(path, "lectura_cruda", valorCrudo);
+  subirValorFirebase(path, "CO2", ppm);
+  subirValorFirebase(path, "CO", co);
+  subirValorFirebase(path, "temperatura", temperatura);
+  subirValorFirebase(path, "humedad", humedad);
+}
 
-  // Subir ppm de CO a Firebase
-  Serial.println("Enviando concentración de CO (ppm) a Firebase...");
-  if (Firebase.setFloat(firebaseData, path + "CO", co)) {
-    Serial.println("✅ PPM de CO actualizado en Firebase");
+void subirValorFirebase(String path, String nombre, float valor) {
+  Serial.println("Enviando " + nombre + " a Firebase...");
+  if (Firebase.setFloat(firebaseData, path + nombre, valor)) {
+    Serial.println("✅ " + nombre + " actualizado en Firebase");
   } else {
-    Serial.print("❌ Error al actualizar PPM de CO: ");
-    Serial.println(firebaseData.errorReason());
-  }
-
-  // Subir temperatura a Firebase
-  Serial.println("Enviando temperatura a Firebase...");
-  if (Firebase.setFloat(firebaseData, path + "temperatura", temperatura)) {
-    Serial.println("✅ Temperatura actualizada en Firebase");
-  } else {
-    Serial.print("❌ Error al actualizar temperatura: ");
-    Serial.println(firebaseData.errorReason());
-  }
-
-  // Subir humedad a Firebase
-  Serial.println("Enviando humedad a Firebase...");
-  if (Firebase.setFloat(firebaseData, path + "humedad", humedad)) {
-    Serial.println("✅ Humedad actualizada en Firebase");
-  } else {
-    Serial.print("❌ Error al actualizar humedad: ");
+    Serial.print("❌ Error al actualizar " + nombre + ": ");
     Serial.println(firebaseData.errorReason());
   }
 }
